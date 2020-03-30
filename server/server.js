@@ -136,6 +136,11 @@ async function createExpressApp()
 
 	expressApp.use(bodyParser.json());
 
+	// Serve all files in the public folder as static files.
+	expressApp.use(express.static('public'));
+
+	expressApp.use((req, res) => res.sendFile(`${__dirname}/public/index.html`));
+
 	/**
 	 * For every API request, verify that the roomId in the path matches and
 	 * existing room.
@@ -361,7 +366,7 @@ async function createExpressApp()
  */
 async function runHttpsServer()
 {
-	logger.info('running an HTTPS server...');
+	logger.info(`running an HTTPS server at port ${config.https.listenPort} ...`);
 
 	// HTTPS server for the protoo WebSocket server.
 	const tls =
@@ -384,7 +389,7 @@ async function runHttpsServer()
  */
 async function runProtooWebSocketServer()
 {
-	logger.info('running protoo WebSocketServer...');
+	logger.info(`running protoo WebSocketServer on port ${config.https.listenPort} ...`);
 
 	// Create the protoo WebSocket server.
 	protooWebSocketServer = new protoo.WebSocketServer(httpsServer,
