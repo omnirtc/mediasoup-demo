@@ -366,7 +366,7 @@ async function createExpressApp()
  */
 async function runHttpsServer()
 {
-	logger.info(`running an HTTPS server at port ${config.https.listenPort} ...`);
+	logger.info(`running an HTTPS server on port ${config.https.listenPort} ...`);
 
 	// HTTPS server for the protoo WebSocket server.
 	const tls =
