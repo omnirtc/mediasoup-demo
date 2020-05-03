@@ -2324,12 +2324,16 @@ export default class RoomClient
 
 		const devices = await navigator.mediaDevices.enumerateDevices();
 
+		logger.debug('_updateWebcams() | devices: %o', devices);
+
 		for (const device of devices)
 		{
 			if (device.kind !== 'videoinput')
 				continue;
 
 			this._webcams.set(device.deviceId, device);
+
+			logger.debug('_updateWebcams() | add to webcam list devices: %o', device);
 		}
 
 		const array = Array.from(this._webcams.values());
