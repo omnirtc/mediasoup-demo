@@ -24,41 +24,16 @@ class Room extends EventEmitter
 	 * @param {mediasoup.Worker} mediasoupWorker - The mediasoup Worker in which a new
 	 *   mediasoup Router must be created.
 	 * @param {String} roomId - Id of the Room instance.
-	 * @param {Boolean} [forceH264=false] - Whether just H264 must be used in the
-	 *   mediasoup Router video codecs.
-	 * @param {Boolean} [forceVP9=false] - Whether just VP9 must be used in the
-	 *   mediasoup Router video codecs.
 	 */
-	static async create({ mediasoupWorker, roomId, forceH264 = false, forceVP9 = false })
+	static async create({ mediasoupWorker, roomId })
 	{
-		logger.info(
-			'create() [roomId:%s, forceH264:%s, forceVP9:%s]',
-			roomId, forceH264, forceVP9);
+		logger.info('create() [roomId:%s]', roomId);
 
 		// Create a protoo Room instance.
 		const protooRoom = new protoo.Room();
 
 		// Router media codecs.
-		let { mediaCodecs } = config.mediasoup.routerOptions;
-
-		// If forceH264 is given, remove all video codecs but H264.
-		if (forceH264)
-		{
-			mediaCodecs = mediaCodecs
-				.filter((codec) => (
-					codec.kind === 'audio' ||
-					codec.mimeType.toLowerCase() === 'video/h264'
-				));
-		}
-		// If forceVP9 is given, remove all video codecs but VP9.
-		if (forceVP9)
-		{
-			mediaCodecs = mediaCodecs
-				.filter((codec) => (
-					codec.kind === 'audio' ||
-					codec.mimeType.toLowerCase() === 'video/vp9'
-				));
-		}
+		const { mediaCodecs } = config.mediasoup.routerOptions;
 
 		// Create a mediasoup Router.
 		const mediasoupRouter = await mediasoupWorker.createRouter({ mediaCodecs });
@@ -857,13 +832,25 @@ class Room extends EventEmitter
 
 				// NOTE: For testing.
 				// await transport.enableTraceEvent([ 'probation', 'bwe' ]);
-				// await transport.enableTraceEvent([ 'bwe' ]);
+				await transport.enableTraceEvent([ 'bwe' ]);
 
 				transport.on('trace', (trace) =>
 				{
-					logger.info(
+					logger.debug(
 						'transport "trace" event [transportId:%s, trace.type:%s, trace:%o]',
 						transport.id, trace.type, trace);
+
+					if (trace.type === 'bwe' && trace.direction === 'out')
+					{
+						peer.notify(
+							'downlinkBwe',
+							{
+								desiredBitrate          : trace.info.desiredBitrate,
+								effectiveDesiredBitrate : trace.info.effectiveDesiredBitrate,
+								availableBitrate        : trace.info.availableBitrate
+							})
+							.catch(() => {});
+					}
 				});
 
 				// Store the WebRtcTransport into the protoo Peer data Object.
@@ -973,7 +960,7 @@ class Room extends EventEmitter
 
 				producer.on('trace', (trace) =>
 				{
-					logger.info(
+					logger.debug(
 						'producer "trace" event [producerId:%s, trace.type:%s, trace:%o]',
 						producer.id, trace.type, trace);
 				});
@@ -1540,7 +1527,7 @@ class Room extends EventEmitter
 
 		consumer.on('trace', (trace) =>
 		{
-			logger.info(
+			logger.debug(
 				'consumer "trace" event [producerId:%s, trace.type:%s, trace:%o]',
 				consumer.id, trace.type, trace);
 		});
