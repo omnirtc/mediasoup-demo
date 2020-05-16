@@ -582,10 +582,6 @@ export default class RoomClient
 
 		this._protoo.on('notification', (notification) =>
 		{
-			logger.debug(
-				'proto "notification" event [method:%s, data:%o]',
-				notification.method, notification.data);
-
 			switch (notification.method)
 			{
 				case 'producerScore':
