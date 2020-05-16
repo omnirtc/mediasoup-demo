@@ -19,8 +19,8 @@
     "debug": "^4.1.1",
     "express": "^4.17.1",
     "heapdump": "^0.3.15",
-    "mediasoup": "https://github.com/omnirtc/mediasoup.git#v3",
-    "pidusage": "^2.0.18",
+    "mediasoup": "git+https://github.com/omnirtc/mediasoup.git#v3",
+    "pidusage": "^2.0.19",
     "protoo-server": "^4.0.4",
     "sctp": "^0.0.19"
   },
