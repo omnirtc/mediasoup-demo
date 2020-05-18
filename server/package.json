@@ -10,15 +10,16 @@
     "lint": "eslint -c .eslintrc.js server.js lib"
   },
   "dependencies": {
-    "colors": "^1.3.3",
+    "colors": "^1.4.0",
+    "body-parser": "^1.19.0",
     "debug": "^4.1.1",
     "express": "^4.16.4",
-    "mediasoup": "^2.6.17",
+    "mediasoup": "^2.6.19",
     "protoo-server": "^3.0.3"
   },
   "devDependencies": {
-    "gulp": "^4.0.0",
-    "gulp-eslint": "^5.0.0",
+    "gulp": "^4.0.2",
+    "gulp-eslint": "^6.0.0",
     "gulp-plumber": "^1.2.1"
   }
 }
