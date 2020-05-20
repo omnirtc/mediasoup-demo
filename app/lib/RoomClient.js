@@ -37,7 +37,7 @@ const VIDEO_SVC_ENCODINGS =
 	{ scalabilityMode: 'S3T3', dtx: true }
 ];
 
-const EXTERNAL_VIDEO_SRC = '/resources/videos/video-audio-stereo.mp4';
+const EXTERNAL_VIDEO_SRC = 'resources/videos/video-audio-stereo.mp4';
 
 const logger = new Logger('RoomClient');
 
@@ -1011,10 +1011,8 @@ export default class RoomClient
 					.codecs
 					.find((c) => c.kind === 'video');
 
-				if (
-					(this._forceVP9 && codec) ||
-					firstVideoCodec.mimeType.toLowerCase() === 'video/vp9'
-				)
+				if ((this._forceVP9 && codec) ||
+					firstVideoCodec.mimeType.toLowerCase() === 'video/vp9')
 				{
 					encodings = VIDEO_KSVC_ENCODINGS;
 				}

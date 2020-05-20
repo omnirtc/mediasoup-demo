@@ -84,7 +84,7 @@ async function run()
 
 	// Enable face detection on demand.
 	if (faceDetection)
-		await faceapi.loadTinyFaceDetectorModel('/resources/face-detector-models');
+		await faceapi.loadTinyFaceDetectorModel('resources/face-detector-models');
 
 	if (info)
 	{
