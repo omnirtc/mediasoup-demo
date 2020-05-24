@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 process.title = 'mediasoup-demo-server';
-process.env.DEBUG = process.env.DEBUG || '*INFO* *WARN* *ERROR*';
+process.env.DEBUG = process.env.DEBUG || '*DEBUG* *INFO* *WARN* *ERROR*';
 
 const config = require('./config');
 
@@ -17,6 +17,7 @@ const url = require('url');
 const protoo = require('protoo-server');
 const mediasoup = require('mediasoup');
 const express = require('express');
+const compression = require('compression');
 const bodyParser = require('body-parser');
 const { AwaitQueue } = require('awaitqueue');
 const Logger = require('./lib/Logger');
@@ -34,9 +35,13 @@ const queue = new AwaitQueue();
 // @type {Map<Number, Room>}
 const rooms = new Map();
 
-// main web server (http or https).
-// @type {http.server or https.Server}
-let webServer;
+// http web server.
+// @type {http.server}
+let httpServer;
+
+// https web server.
+// @type {https.Server}
+let httpsServer;
 
 // Express application.
 // @type {Function}
@@ -53,6 +58,8 @@ const mediasoupWorkers = [];
 // Index of next mediasoup Worker to use.
 // @type {Number}
 let nextMediasoupWorkerIdx = 0;
+
+const standalone = '' === config.webroot || '/' === config.webroot;
 
 run();
 
@@ -135,11 +142,36 @@ async function createExpressApp()
 
 	expressApp = express();
 
+	expressApp.use(compression());
+
 	expressApp.use(bodyParser.json());
 
+	// pre process all request
+	expressApp.all('*', async (req, res, next) => {
+		//logger.debug('receiving request.headers: %o', req.headers);
+		// if request is https or request from reverse proxy (nginx ...)
+		if (req.secure || req.headers['x-forwarded-for'])
+		{
+			logger.debug('reqeust go next .... url:%s', req.url);
+			return next();
+		}
+		else if (standalone) // standalone
+		{
+			const redirectUrl = `https://${req.hostname}:${config.signalingPort}${req.url}`;
+			logger.debug('reqeust redirect .... url:%s', redirectUrl);
+			res.redirect(`${redirectUrl}`);
+		}
+		else
+		{
+			const redirectUrl = `http://${req.hostname}${config.webroot}`;
+			logger.debug('reqeust redirect .... url:%s', redirectUrl);
+			res.redirect(`${redirectUrl}`);
+		}
+	});
+
 	// Serve all files in the public folder as static files.
-	expressApp.use(`${config.root}`, express.static(`${__dirname}/public`));
-	expressApp.use(`${config.root}`, (req, res) => res.sendFile(`${__dirname}/public/index.html`));
+	expressApp.use(config.webroot, express.static(`${__dirname}/public`));
+	expressApp.use(config.webroot, (req, res) => res.sendFile(`${__dirname}/public/index.html`));
 
 	/**
 	 * For every API request, verify that the roomId in the path matches and
@@ -152,7 +184,6 @@ async function createExpressApp()
 			if (!rooms.has(roomId))
 			{
 				const error = new Error(`room with id "${roomId}" not found`);
-
 				error.status = 404;
 				throw error;
 			}
@@ -366,25 +397,12 @@ async function createExpressApp()
  */
 async function runWebServer()
 {
-	if (! config.standalone)
-	{
-		// HTTP server for the protoo WebSocket server.
+	let listeningIp = standalone ? '0.0.0.0' : '127.0.0.1';
 
-		logger.info(`running an HTTP server on ${config.http.listenIp}:${config.http.listenPort} ...`);
-
-		webServer = http.createServer(expressApp);
-
-		await new Promise((resolve) =>
-		{
-			webServer.listen(
-				Number(config.http.listenPort), config.http.listenIp, resolve);
-		});
-	}
-	else
+	if (standalone) // proxy
 	{
 		// HTTPS server for the protoo WebSocket server.
-
-		logger.info(`running an HTTPS server on ${config.https.listenIp}:${config.https.listenPort} ...`);
+		logger.info(`running an HTTPS server on ${listeningIp}:${config.signalingPort} ...`);
 
 		const tls =
 		{
@@ -392,14 +410,26 @@ async function runWebServer()
 			key  : fs.readFileSync(config.https.tls.key)
 		};
 
-		webServer = https.createServer(tls, expressApp);
+		httpsServer = https.createServer(tls, expressApp);
 
 		await new Promise((resolve) =>
 		{
-			webServer.listen(
-				Number(config.https.listenPort), config.https.listenIp, resolve);
+			httpsServer.listen(Number(config.signalingPort), listeningIp, resolve);
 		});
 	}
+
+
+	// HTTP server for the protoo WebSocket server.
+
+	logger.info(`running an HTTP server on 0.0.0.0:${config.listeningPort} ...`);
+
+	httpServer = http.createServer(expressApp);
+
+	await new Promise((resolve) =>
+	{
+		//httpServer.listen(Number(config.listeningPort), listeningIp, resolve);
+		httpServer.listen(Number(config.listeningPort), '0.0.0.0', resolve);
+	});
 }
 
 /**
@@ -407,6 +437,8 @@ async function runWebServer()
  */
 async function runProtooWebSocketServer()
 {
+	const webServer = standalone ? httpsServer : httpServer;
+
 	logger.info(`running protoo WebSocketServer on port ${webServer.address().port} ...`);
 
 	// Create the protoo WebSocket server.
