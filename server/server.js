@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 process.title = 'mediasoup-demo-server';
-process.env.DEBUG = process.env.DEBUG || '*DEBUG* *INFO* *WARN* *ERROR*';
+process.env.DEBUG = process.env.DEBUG || 'mediasoup* *DEBUG* *INFO* *WARN* *ERROR*';
 
 const config = require('./config');
 
@@ -46,6 +46,9 @@ let httpsServer;
 // Express application.
 // @type {Function}
 let expressApp;
+
+// Router
+const router = express.Router();
 
 // Protoo WebSocket server.
 // @type {protoo.WebSocketServer}
@@ -148,36 +151,45 @@ async function createExpressApp()
 
 	// pre process all request
 	expressApp.all('*', async (req, res, next) => {
-		//logger.debug('receiving request.headers: %o', req.headers);
 		// if request is https or request from reverse proxy (nginx ...)
-		if (req.secure || req.headers['x-forwarded-for'])
+		if (standalone)
 		{
-			logger.debug('reqeust go next .... url:%s', req.url);
-			return next();
-		}
-		else if (standalone) // standalone
-		{
-			const redirectUrl = `https://${req.hostname}:${config.signalingPort}${req.url}`;
-			logger.debug('reqeust redirect .... url:%s', redirectUrl);
-			res.redirect(`${redirectUrl}`);
+			if (! req.secure || req.headers['x-forwarded-for']) // http or reverse proxy
+			{
+				const url = req.headers['x-forwarded-for'] ? '' : req.url;
+				const redirectUrl = `https://${req.hostname}:${config.signalingPort}${url}`;
+				logger.debug('standalone reqeust redirect .... url:%s', redirectUrl);
+				res.redirect(`${redirectUrl}`);
+			}
+			else
+			{
+				logger.debug('standalne https reqeust go next .... path:%s, url:%s', req.path, req.url);
+				return next();
+			}
 		}
 		else
 		{
-			const redirectUrl = `http://${req.hostname}${config.webroot}`;
-			logger.debug('reqeust redirect .... url:%s', redirectUrl);
-			res.redirect(`${redirectUrl}`);
+			if (req.headers['x-forwarded-for'])
+			{
+				logger.debug('proxy http reqeust go next .... url:%s', req.url);
+				return next();
+			}
+			else
+			{
+				const redirectUrl = `http://${req.hostname}${config.webroot}${req.url}`;
+				logger.debug('proxy reqeust redirect .... url:%s', redirectUrl);
+				res.redirect(`${redirectUrl}`);
+			}
 		}
 	});
 
-	// Serve all files in the public folder as static files.
-	expressApp.use(config.webroot, express.static(`${__dirname}/public`));
-	expressApp.use(config.webroot, (req, res) => res.sendFile(`${__dirname}/public/index.html`));
+	expressApp.use(config.webroot, router);
 
 	/**
 	 * For every API request, verify that the roomId in the path matches and
 	 * existing room.
 	 */
-	expressApp.param(
+	router.param(
 		'roomId', (req, res, next, roomId) =>
 		{
 			// The room must exist for all API requests.
@@ -191,24 +203,28 @@ async function createExpressApp()
 			req.room = rooms.get(roomId);
 
 			next();
-		});
+		}
+	);
 
 	/**
 	 * API GET resource that returns the mediasoup Router RTP capabilities of
 	 * the room.
 	 */
-	expressApp.get(
+	router.get(
 		'/rooms/:roomId', (req, res) =>
 		{
+			logger.debug('got room rtpcapabilities, url:%s', req.url);
+
 			const data = req.room.getRouterRtpCapabilities();
 
 			res.status(200).json(data);
-		});
+		}
+	);
 
 	/**
 	 * POST API to create a Broadcaster.
 	 */
-	expressApp.post(
+	router.post(
 		'/rooms/:roomId/broadcasters', async (req, res, next) =>
 		{
 			const {
@@ -234,12 +250,13 @@ async function createExpressApp()
 			{
 				next(error);
 			}
-		});
+		}
+	);
 
 	/**
 	 * DELETE API to delete a Broadcaster.
 	 */
-	expressApp.delete(
+	router.delete(
 		'/rooms/:roomId/broadcasters/:broadcasterId', (req, res) =>
 		{
 			const { broadcasterId } = req.params;
@@ -247,7 +264,8 @@ async function createExpressApp()
 			req.room.deleteBroadcaster({ broadcasterId });
 
 			res.status(200).send('broadcaster deleted');
-		});
+		}
+	);
 
 	/**
 	 * POST API to create a mediasoup Transport associated to a Broadcaster.
@@ -255,7 +273,7 @@ async function createExpressApp()
 	 * type parameters in the body. There are also additional parameters for
 	 * PlainTransport.
 	 */
-	expressApp.post(
+	router.post(
 		'/rooms/:roomId/broadcasters/:broadcasterId/transports',
 		async (req, res, next) =>
 		{
@@ -278,13 +296,14 @@ async function createExpressApp()
 			{
 				next(error);
 			}
-		});
+		}
+	);
 
 	/**
 	 * POST API to connect a Transport belonging to a Broadcaster. Not needed
 	 * for PlainTransport if it was created with comedia option set to true.
 	 */
-	expressApp.post(
+	router.post(
 		'/rooms/:roomId/broadcasters/:broadcasterId/transports/:transportId/connect',
 		async (req, res, next) =>
 		{
@@ -306,7 +325,8 @@ async function createExpressApp()
 			{
 				next(error);
 			}
-		});
+		}
+	);
 
 	/**
 	 * POST API to create a mediasoup Producer associated to a Broadcaster.
@@ -314,7 +334,7 @@ async function createExpressApp()
 	 * the URL path. Body parameters include kind and rtpParameters of the
 	 * Producer.
 	 */
-	expressApp.post(
+	router.post(
 		'/rooms/:roomId/broadcasters/:broadcasterId/transports/:transportId/producers',
 		async (req, res, next) =>
 		{
@@ -337,7 +357,8 @@ async function createExpressApp()
 			{
 				next(error);
 			}
-		});
+		}
+	);
 
 	/**
 	 * POST API to create a mediasoup Consumer associated to a Broadcaster.
@@ -345,7 +366,7 @@ async function createExpressApp()
 	 * the URL path. Query parameters must include the desired producerId to
 	 * consume.
 	 */
-	expressApp.post(
+	router.post(
 		'/rooms/:roomId/broadcasters/:broadcasterId/transports/:transportId/consume',
 		async (req, res, next) =>
 		{
@@ -367,7 +388,12 @@ async function createExpressApp()
 			{
 				next(error);
 			}
-		});
+		}
+	);
+
+	// Serve all files in the public folder as static files.
+	router.use(express.static(`${__dirname}/public`));
+	router.use((req, res) => res.sendFile(`${__dirname}/public/index.html`));
 
 	/**
 	 * Error handler.
@@ -377,7 +403,7 @@ async function createExpressApp()
 		{
 			if (error)
 			{
-				logger.warn('Express app %s', String(error));
+				logger.warn('Express app %s, url %s', String(error), req.url);
 
 				error.status = error.status || (error.name === 'TypeError' ? 400 : 500);
 
@@ -388,8 +414,10 @@ async function createExpressApp()
 			{
 				next();
 			}
-		});
+		}
+	);
 }
+
 
 /**
  * Create a Node.js HTTP/HTTPS web server. It listens in the IP and port given in the
@@ -399,7 +427,7 @@ async function runWebServer()
 {
 	let listeningIp = standalone ? '0.0.0.0' : '127.0.0.1';
 
-	if (standalone) // proxy
+	if (standalone)
 	{
 		// HTTPS server for the protoo WebSocket server.
 		logger.info(`running an HTTPS server on ${listeningIp}:${config.signalingPort} ...`);
@@ -417,7 +445,6 @@ async function runWebServer()
 			httpsServer.listen(Number(config.signalingPort), listeningIp, resolve);
 		});
 	}
-
 
 	// HTTP server for the protoo WebSocket server.
 
