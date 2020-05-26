@@ -446,8 +446,6 @@ async function runWebServer()
 		});
 	}
 
-	// HTTP server for the protoo WebSocket server.
-
 	logger.info(`running an HTTP server on 0.0.0.0:${config.listeningPort} ...`);
 
 	httpServer = http.createServer(expressApp);
