@@ -2,24 +2,26 @@ module.exports =
 {
 	// Listening hostname for `gulp live|open`.
 	domain: 'localhost',
-	root: '/v2',
-	standalone: false,
-	http:
+
+	listeningPort : process.env.PROTOO_LISTENING_PORT || 5080,
+
+	signalingPort  : process.env.PROTOO_SIGNALING_PORT || 5443,
+
+	// web root
+	// '', '/' = standalone
+	webroot : '/',
+
+	// Signaling settings (protoo WebSocket server and HTTP API server).
+	https  :
 	{
-		listeningPort: 5080,
-		listeningIp: '127.0.0.1',
+		// NOTE: Set your own valid certificate files.
+		tls        :
+		{
+			cert : process.env.HTTPS_CERT_FULLCHAIN || `${__dirname}/certs/fullchain.pem`,
+			key  : process.env.HTTPS_CERT_PRIVKEY || `${__dirname}/certs/privkey.pem`
+		}
 	},
 
-	https:
-	{
-		listeningPort: 5443,
-		listeningIp: '0.0.0.0',
-		tls:
-		{
-			cert: `${__dirname}/certs/mediasoup-demo.localhost.cert.pem`,
-			key: `${__dirname}/certs/mediasoup-demo.localhost.key.pem`
-		},
-	},
 	mediasoup:
 	{
 		// mediasoup Server settings.

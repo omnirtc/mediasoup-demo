@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 process.title = 'mediasoup-demo-server';
-process.env.DEBUG = process.env.DEBUG || 'mediasoup:DEBUG* mediasoup:INFO* mediasoup:WARN* mediasoup:ERROR*';
+process.env.DEBUG = process.env.DEBUG || 'mediasoup-demo* mediasoup:INFO* mediasoup:WARN* mediasoup:ERROR*';
 
 const config = require('./config');
 
@@ -16,12 +16,13 @@ const http = require('http');
 const https = require('https');
 const url = require('url');
 const express = require('express');
+const compression = require('compression');
 const bodyParser = require('body-parser');
 const protooServer = require('protoo-server');
 const mediasoup = require('mediasoup');
-const readline = require('readline');
-const colors = require('colors/safe');
-const repl = require('repl');
+//const readline = require('readline');
+//const colors = require('colors/safe');
+//const repl = require('repl');
 const Logger = require('./lib/Logger');
 const Room = require('./lib/Room');
 const homer = require('./lib/homer');
@@ -82,45 +83,84 @@ mediaServer.on('newroom', (room) => {
 	});
 });
 
-const expressApp = express();
 
-expressApp.use(bodyParser.json());
-
-// Serve all files in the public folder as static files.
-expressApp.use(`${config.root}`, express.static(`${__dirname}/public`));
-expressApp.use(`${config.root}`, (req, res) => res.sendFile(`${__dirname}/public/index.html`));
-
-/**
-* For every API request, verify that the roomId in the path matches and
-* existing room.
-*/
-expressApp.param('roomId', (req, res, next, roomId) => {
-	// The room must exist for all API requests.
-	if (!rooms.has(roomId)) {
-		const error = new Error(`room with id "${roomId}" not found`);
-
-		error.status = 404;
-		throw error;
-	}
-
-	req.room = rooms.get(roomId);
-
-	next();
-});
-
-let mainServer;
+const standalone = '' === config.webroot || '/' === config.webroot;
 
 function run() {
-	if (!config.standalone) {
-		const httpServer = http.createServer(expressApp);
 
-		httpServer.listen(config.http.listeningPort, config.http.listeningIp, () => {
-			logger.info('protoo Websocket based on HTTP server running');
-		})
+	const expressApp = express();
 
-		mainServer = httpServer;
-	}
-	else {
+	// pre process all request
+	expressApp.all('*', async (req, res, next) => {
+		// if request is https or request from reverse proxy (nginx ...)
+		logger.debug("ssssssssssssssssssssssssssss, ", req.url)
+		if (standalone)
+		{
+			if (! req.secure || req.headers['x-forwarded-for']) // http or reverse proxy
+			{
+				const url = req.headers['x-forwarded-for'] ? '' : req.url;
+				const redirectUrl = `https://${req.hostname}:${config.signalingPort}${url}`;
+				logger.debug('standalone reqeust redirect .... url:%s', redirectUrl);
+				res.redirect(`${redirectUrl}`);
+			}
+			else
+			{
+				logger.debug('standalne https reqeust go next .... path:%s, url:%s', req.path, req.url);
+				return next();
+			}
+		}
+		else
+		{
+			if (req.headers['x-forwarded-for'])
+			{
+				logger.debug('proxy http reqeust go next .... url:%s', req.url);
+				return next();
+			}
+			else
+			{
+				const redirectUrl = `http://${req.hostname}${config.webroot}${req.url}`;
+				logger.debug('proxy reqeust redirect .... url:%s', redirectUrl);
+				res.redirect(`${redirectUrl}`);
+			}
+		}
+	});
+
+	const router = express.Router();
+
+	expressApp.use(compression());
+
+	expressApp.use(bodyParser.json());
+
+	expressApp.use(config.webroot, router);
+
+	// Serve all files in the public folder as static files.
+	router.use(express.static(`${__dirname}/public`));
+	router.use((req, res) => res.sendFile(`${__dirname}/public/index.html`));
+
+	/**
+	* For every API request, verify that the roomId in the path matches and
+	* existing room.
+	*/
+	router.param('roomId', (req, res, next, roomId) => {
+		// The room must exist for all API requests.
+		if (!rooms.has(roomId)) {
+			const error = new Error(`room with id "${roomId}" not found`);
+
+			error.status = 404;
+			throw error;
+		}
+
+		req.room = rooms.get(roomId);
+
+		next();
+	});
+
+	let listeningIp = standalone ? '0.0.0.0' : '127.0.0.1';
+	let httpsServer = undefined;
+	let httpServer = undefined;
+
+	if (standalone)
+	{
 		// HTTPS server for the protoo WebSocket server.
 		const tls =
 		{
@@ -128,23 +168,27 @@ function run() {
 			key: fs.readFileSync(config.https.tls.key)
 		};
 
-		const httpsServer = https.createServer(tls, expressApp);
+		httpsServer = https.createServer(tls, expressApp);
 
-		httpsServer.listen(config.https.listeningPort, config.https.listeningIp, () => {
-			logger.info('protoo WebSocket based on HTTPS server running');
+		httpsServer.listen(config.signalingPort, listeningIp, () => {
+			logger.info(`running an HTTPS server on ${listeningIp}:${config.signalingPort} ...`);
 		});
-
-		mainServer = httpsServer;
 	}
 
+	httpServer = http.createServer(expressApp);
+
+	httpServer.listen(config.listeningPort, '0.0.0.0', () => {
+		logger.info(`running an HTTP server on 0.0.0.0:${config.listeningPort} ...`);
+	})
+
 	// Protoo WebSocket server.
-	const webSocketServer = new protooServer.WebSocketServer(mainServer,
-		{
-			maxReceivedFrameSize: 960000, // 960 KBytes.
-			maxReceivedMessageSize: 960000,
-			fragmentOutgoingMessages: true,
-			fragmentationThreshold: 960000
-		});
+	const webSocketServer = new protooServer.WebSocketServer(standalone ? httpsServer : httpServer,
+	{
+		maxReceivedFrameSize: 960000, // 960 KBytes.
+		maxReceivedMessageSize: 960000,
+		fragmentOutgoingMessages: true,
+		fragmentationThreshold: 960000
+	});
 
 	// Handle connections from clients.
 	webSocketServer.on('connectionrequest', (info, accept, reject) => {

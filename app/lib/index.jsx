@@ -64,7 +64,7 @@ domready(() =>
 			if (!window.DEMO_DO_FACE_DETECTION)
 				return;
 
-			return faceapi.loadTinyFaceDetectorModel('/resources/face-detector-models');
+			return faceapi.loadTinyFaceDetectorModel('resources/face-detector-models');
 		})
 		.then(() => run());
 });
